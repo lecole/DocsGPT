@@ -18,7 +18,7 @@ Say goodbye to time-consuming manual searches, and let <strong><a href="https://
   <a href="https://github.com/arc53/DocsGPT">![link to main GitHub showing Forks number](https://img.shields.io/github/forks/arc53/docsgpt?style=social)</a>
   <a href="https://github.com/arc53/DocsGPT/blob/main/LICENSE">![link to license file](https://img.shields.io/github/license/arc53/docsgpt)</a>
   <a href="https://discord.gg/n5BX8dh8rU">![link to discord](https://img.shields.io/discord/1070046503302877216)</a>
-  <a href="https://twitter.com/ATushynski">![X (formerly Twitter) URL](https://img.shields.io/twitter/follow/ATushynski)</a>
+  <a href="https://twitter.com/docsgptai">![X (formerly Twitter) URL](https://img.shields.io/twitter/follow/docsgptai)</a>
 
  
 </div>
@@ -40,7 +40,7 @@ You can find our roadmap [here](https://github.com/orgs/arc53/projects/2). Pleas
 
 | Name                                                                  | Base Model  | Requirements (or similar) |
 | --------------------------------------------------------------------- | ----------- | ------------------------- |
-| [Docsgpt-7b-falcon](https://huggingface.co/Arc53/docsgpt-7b-falcon)   | Falcon-7b   | 1xA10G gpu                |
+| [Docsgpt-7b-mistral](https://huggingface.co/Arc53/docsgpt-7b-mistral)   | Mistral-7b   | 1xA10G gpu                |
 | [Docsgpt-14b](https://huggingface.co/Arc53/docsgpt-14b)               | llama-2-14b | 2xA10 gpu's               |
 | [Docsgpt-40b-falcon](https://huggingface.co/Arc53/docsgpt-40b-falcon) | falcon-40b  | 8xA10G gpu's              |
 
@@ -76,23 +76,25 @@ If you don't have enough resources to run it, you can use bitsnbytes to quantize
 
 ## QuickStart
 
-Note: Make sure you have [Docker](https://docs.docker.com/engine/install/) installed
+> [!Note]
+> Make sure you have [Docker](https://docs.docker.com/engine/install/) installed
 
 On Mac OS or Linux, write:
 
 `./setup.sh`
 
-It will install all the dependencies and allow you to download the local model or use OpenAI.
+It will install all the dependencies and allow you to download the local model, use OpenAI or use our LLM API.
 
 Otherwise, refer to this Guide:
 
 1. Download and open this repository with `git clone https://github.com/arc53/DocsGPT.git`
-2. Create a `.env` file in your root directory and set the env variable `API_KEY` with your [OpenAI API key](https://platform.openai.com/account/api-keys) and `VITE_API_STREAMING` to true or false, depending on whether you want streaming answers or not.
+2. Create a `.env` file in your root directory and set the env variables and `VITE_API_STREAMING` to true or false, depending on whether you want streaming answers or not.
    It should look like this inside:
 
    ```
-   API_KEY=Yourkey
+   LLM_NAME=[docsgpt or openai or others] 
    VITE_API_STREAMING=true
+   API_KEY=[if LLM_NAME is openai]
    ```
 
    See optional environment variables in the [/.env-template](https://github.com/arc53/DocsGPT/blob/main/.env-template) and [/application/.env_sample](https://github.com/arc53/DocsGPT/blob/main/application/.env_sample) files.
@@ -118,10 +120,11 @@ docker compose -f docker-compose-dev.yaml up -d
 
 ### Run the Backend
 
-Make sure you have Python 3.10 or 3.11 installed.
+> [!Note]
+> Make sure you have Python 3.10 or 3.11 installed.
 
-1. Export required environment variables or prepare a `.env` file in the `/application` folder:
-   - Copy [.env_sample](https://github.com/arc53/DocsGPT/blob/main/application/.env_sample) and create `.env` with your OpenAI API token for the `API_KEY` and `EMBEDDINGS_KEY` fields.
+1. Export required environment variables or prepare a `.env` file in the project folder:
+   - Copy [.env_sample](https://github.com/arc53/DocsGPT/blob/main/application/.env_sample) and create `.env`.
 
 (check out [`application/core/settings.py`](application/core/settings.py) if you want to see more config options.)
 
@@ -142,18 +145,28 @@ python -m venv venv
  venv/Scripts/activate
 ```
 
-3. Change to the `application/` subdir by the command `cd application/` and install dependencies for the backend:
+3. Download embedding model and save it in the `model/` folder:
+You can use the script below, or download it manually from [here](https://d3dg1063dc54p9.cloudfront.net/models/embeddings/mpnet-base-v2.zip), unzip it and save it in the `model/` folder.
 
 ```commandline
-pip install -r requirements.txt
+wget https://d3dg1063dc54p9.cloudfront.net/models/embeddings/mpnet-base-v2.zip
+unzip mpnet-base-v2.zip -d model
+rm mpnet-base-v2.zip
 ```
 
-4. Run the app using `flask --app application/app.py run --host=0.0.0.0 --port=7091`.
-5. Start worker with `celery -A application.app.celery worker -l INFO`.
+4. Install dependencies for the backend:
+
+```commandline
+pip install -r application/requirements.txt
+```
+
+5. Run the app using `flask --app application/app.py run --host=0.0.0.0 --port=7091`.
+6. Start worker with `celery -A application.app.celery worker -l INFO`.
 
 ### Start Frontend
 
-Make sure you have Node version 16 or higher.
+> [!Note]
+> Make sure you have Node version 16 or higher.
 
 1. Navigate to the [/frontend](https://github.com/arc53/DocsGPT/tree/main/frontend) folder.
 2. Install the required packages `husky` and `vite` (ignore if already installed).

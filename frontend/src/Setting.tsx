@@ -1,75 +1,109 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import Arrow2 from './assets/dropdown-arrow.svg';
 import ArrowLeft from './assets/arrow-left.svg';
 import ArrowRight from './assets/arrow-right.svg';
-
+import Trash from './assets/trash.svg';
+import {
+  selectPrompt,
+  setPrompt,
+  selectSourceDocs,
+  setSourceDocs,
+} from './preferences/preferenceSlice';
+import { Doc } from './preferences/preferenceApi';
+import { useDarkTheme } from './hooks';
+import Dropdown from './components/Dropdown';
 type PromptProps = {
-  prompts: string[];
-  selectedPrompt: string;
-  onSelectPrompt: (prompt: string) => void;
-  onAddPrompt: (name: string) => void;
-  newPromptName: string;
-  onNewPromptNameChange: (name: string) => void;
-  isAddPromptModalOpen: boolean;
-  onToggleAddPromptModal: () => void;
-  onDeletePrompt: (name: string) => void;
+  prompts: { name: string; id: string; type: string }[];
+  selectedPrompt: { name: string; id: string; type: string };
+  onSelectPrompt: (name: string, id: string, type: string) => void;
+  setPrompts: (prompts: { name: string; id: string; type: string }[]) => void;
+  apiHost: string;
 };
 
 const Setting: React.FC = () => {
-  const tabs = ['General', 'Prompts', 'Documents', 'Widgets'];
+  const tabs = ['General', 'Prompts', 'Documents'];
+  //const tabs = ['General', 'Prompts', 'Documents', 'Widgets'];
+
   const [activeTab, setActiveTab] = useState('General');
-  const [prompts, setPrompts] = useState<string[]>(['Prompt 1', 'Prompt 2']);
-  const [selectedPrompt, setSelectedPrompt] = useState('');
-  const [newPromptName, setNewPromptName] = useState('');
+  const [prompts, setPrompts] = useState<
+    { name: string; id: string; type: string }[]
+  >([]);
+  const selectedPrompt = useSelector(selectPrompt);
   const [isAddPromptModalOpen, setAddPromptModalOpen] = useState(false);
-  const [documents, setDocuments] = useState<Document[]>([]);
+  const documents = useSelector(selectSourceDocs);
   const [isAddDocumentModalOpen, setAddDocumentModalOpen] = useState(false);
-  const [newDocument, setNewDocument] = useState<Document>({
-    name: '',
-    vectorDate: '',
-    vectorLocation: '',
-  });
-  const onDeletePrompt = (name: string) => {
-    setPrompts(prompts.filter((prompt) => prompt !== name));
-    setSelectedPrompt(''); // Clear the selected prompt
-  };
+
+  const dispatch = useDispatch();
+
+  const apiHost = import.meta.env.VITE_API_HOST || 'https://docsapi.arc53.com';
   const [widgetScreenshot, setWidgetScreenshot] = useState<File | null>(null);
 
   const updateWidgetScreenshot = (screenshot: File | null) => {
     setWidgetScreenshot(screenshot);
   };
 
-  // Function to add a new document
-  const addDocument = () => {
-    if (
-      newDocument.name &&
-      newDocument.vectorDate &&
-      newDocument.vectorLocation
-    ) {
-      setDocuments([...documents, newDocument]);
-      setNewDocument({
-        name: '',
-        vectorDate: '',
-        vectorLocation: '',
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const response = await fetch(`${apiHost}/api/get_prompts`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch prompts');
+        }
+        const promptsData = await response.json();
+        setPrompts(promptsData);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    fetchPrompts();
+  }, []);
+
+  const onDeletePrompt = (name: string, id: string) => {
+    setPrompts(prompts.filter((prompt) => prompt.id !== id));
+
+    fetch(`${apiHost}/api/delete_prompt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      // send id in body only
+      body: JSON.stringify({ id: id }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to delete prompt');
+        }
+      })
+      .catch((error) => {
+        console.error(error);
       });
-      toggleAddDocumentModal();
-    }
   };
 
-  // Function to toggle the Add Document modal
-  const toggleAddDocumentModal = () => {
-    setAddDocumentModalOpen(!isAddDocumentModalOpen);
-  };
+  const handleDeleteClick = (index: number, doc: Doc) => {
+    const docPath = 'indexes/' + 'local' + '/' + doc.name;
 
-  const handleDeleteDocument = (index: number) => {
-    const updatedDocuments = [...documents];
-    updatedDocuments.splice(index, 1);
-    setDocuments(updatedDocuments);
+    fetch(`${apiHost}/api/delete_old?path=${docPath}`, {
+      method: 'GET',
+    })
+      .then((response) => {
+        if (response.ok && documents) {
+          const updatedDocuments = [
+            ...documents.slice(0, index),
+            ...documents.slice(index + 1),
+          ];
+          dispatch(setSourceDocs(updatedDocuments));
+        }
+      })
+      .catch((error) => console.error(error));
   };
 
   return (
-    <div className="p-4 pt-20 md:p-12">
-      <p className="text-2xl font-bold text-eerie-black">Settings</p>
+    <div className="wa p-4 pt-20 md:p-12">
+      <p className="text-2xl font-bold text-eerie-black dark:text-bright-gray">
+        Settings
+      </p>
       <div className="mt-6 flex flex-row items-center space-x-4 overflow-x-auto md:space-x-8 ">
         <div className="md:hidden">
           <button
@@ -86,7 +120,7 @@ const Setting: React.FC = () => {
               onClick={() => setActiveTab(tab)}
               className={`h-9 rounded-3xl px-4 font-bold ${
                 activeTab === tab
-                  ? 'bg-purple-3000 text-purple-30'
+                  ? 'bg-purple-3000 text-purple-30 dark:bg-dark-charcoal'
                   : 'text-gray-6000'
               }`}
             >
@@ -104,15 +138,6 @@ const Setting: React.FC = () => {
         </div>
       </div>
       {renderActiveTab()}
-
-      {isAddDocumentModalOpen && (
-        <AddDocumentModal
-          newDocument={newDocument}
-          onNewDocumentChange={setNewDocument}
-          onAddDocument={addDocument}
-          onClose={toggleAddDocumentModal}
-        />
-      )}
 
       {/* {activeTab === 'Widgets' && (
         <Widgets
@@ -139,27 +164,18 @@ const Setting: React.FC = () => {
           <Prompts
             prompts={prompts}
             selectedPrompt={selectedPrompt}
-            onSelectPrompt={setSelectedPrompt}
-            onAddPrompt={addPrompt}
-            newPromptName={''}
-            onNewPromptNameChange={function (name: string): void {
-              throw new Error('Function not implemented.');
-            }}
-            isAddPromptModalOpen={false}
-            onToggleAddPromptModal={function (): void {
-              throw new Error('Function not implemented.');
-            }}
-            onDeletePrompt={onDeletePrompt}
+            onSelectPrompt={(name, id, type) =>
+              dispatch(setPrompt({ name: name, id: id, type: type }))
+            }
+            setPrompts={setPrompts}
+            apiHost={apiHost}
           />
         );
       case 'Documents':
         return (
           <Documents
             documents={documents}
-            isAddDocumentModalOpen={isAddDocumentModalOpen}
-            newDocument={newDocument}
-            handleDeleteDocument={handleDeleteDocument}
-            toggleAddDocumentModal={toggleAddDocumentModal}
+            handleDeleteDocument={handleDeleteClick}
           />
         );
       case 'Widgets':
@@ -173,38 +189,33 @@ const Setting: React.FC = () => {
         return null;
     }
   }
-
-  function addPrompt(name: string) {
-    if (name) {
-      setPrompts([...prompts, name]);
-      setNewPromptName('');
-      toggleAddPromptModal();
-    }
-  }
-
-  function toggleAddPromptModal() {
-    setAddPromptModalOpen(!isAddPromptModalOpen);
-  }
 };
 
 const General: React.FC = () => {
   const themes = ['Light', 'Dark'];
-  const languages = ['English', 'French', 'Hindi'];
-  const [selectedTheme, setSelectedTheme] = useState(themes[0]);
+  const languages = ['English'];
+  const [isDarkTheme, toggleTheme] = useDarkTheme();
+  const [selectedTheme, setSelectedTheme] = useState(
+    isDarkTheme ? 'Dark' : 'Light',
+  );
   const [selectedLanguage, setSelectedLanguage] = useState(languages[0]);
-
   return (
     <div className="mt-[59px]">
       <div className="mb-4">
-        <p className="font-bold text-jet">Select Theme</p>
+        <p className="font-bold text-jet dark:text-bright-gray">Select Theme</p>
         <Dropdown
           options={themes}
           selectedValue={selectedTheme}
-          onSelect={setSelectedTheme}
+          onSelect={(option: string) => {
+            setSelectedTheme(option);
+            option !== selectedTheme && toggleTheme();
+          }}
         />
       </div>
       <div>
-        <p className="font-bold text-jet">Select Language</p>
+        <p className="font-bold text-jet dark:text-bright-gray">
+          Select Language
+        </p>
         <Dropdown
           options={languages}
           selectedValue={selectedLanguage}
@@ -221,116 +232,202 @@ const Prompts: React.FC<PromptProps> = ({
   prompts,
   selectedPrompt,
   onSelectPrompt,
-  onAddPrompt,
-  onDeletePrompt,
+  setPrompts,
+  apiHost,
 }) => {
-  const [isAddPromptModalOpen, setAddPromptModalOpen] = useState(false);
-  const [newPromptName, setNewPromptName] = useState('');
-
-  const openAddPromptModal = () => {
-    setAddPromptModalOpen(true);
+  const handleSelectPrompt = ({
+    name,
+    id,
+    type,
+  }: {
+    name: string;
+    id: string;
+    type: string;
+  }) => {
+    setNewPromptName(name);
+    onSelectPrompt(name, id, type);
   };
+  const [newPromptName, setNewPromptName] = useState(selectedPrompt.name);
+  const [newPromptContent, setNewPromptContent] = useState('');
 
-  const closeAddPromptModal = () => {
-    setAddPromptModalOpen(false);
+  const handleAddPrompt = async () => {
+    try {
+      const response = await fetch(`${apiHost}/api/create_prompt`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: newPromptName,
+          content: newPromptContent,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to add prompt');
+      }
+      const newPrompt = await response.json();
+      if (setPrompts) {
+        setPrompts([
+          ...prompts,
+          { name: newPromptName, id: newPrompt.id, type: 'private' },
+        ]);
+      }
+      onSelectPrompt(newPromptName, newPrompt.id, newPromptContent);
+      setNewPromptName(newPromptName);
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const handleDeletePrompt = () => {
-    if (selectedPrompt) {
-      onDeletePrompt(selectedPrompt); // Remove the selected prompt
-    }
+    setPrompts(prompts.filter((prompt) => prompt.id !== selectedPrompt.id));
+    console.log('selectedPrompt.id', selectedPrompt.id);
+
+    fetch(`${apiHost}/api/delete_prompt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ id: selectedPrompt.id }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to delete prompt');
+        }
+        // get 1st prompt and set it as selected
+        if (prompts.length > 0) {
+          onSelectPrompt(prompts[0].name, prompts[0].id, prompts[0].type);
+          setNewPromptName(prompts[0].name);
+        }
+      })
+      .catch((error) => {
+        console.error(error);
+      });
+  };
+
+  useEffect(() => {
+    const fetchPromptContent = async () => {
+      console.log('fetching prompt content');
+      try {
+        const response = await fetch(
+          `${apiHost}/api/get_single_prompt?id=${selectedPrompt.id}`,
+          {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          },
+        );
+        if (!response.ok) {
+          throw new Error('Failed to fetch prompt content');
+        }
+        const promptContent = await response.json();
+        setNewPromptContent(promptContent.content);
+      } catch (error) {
+        console.error(error);
+      }
+    };
+
+    fetchPromptContent();
+  }, [selectedPrompt]);
+
+  const handleSaveChanges = () => {
+    fetch(`${apiHost}/api/update_prompt`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        id: selectedPrompt.id,
+        name: newPromptName,
+        content: newPromptContent,
+      }),
+    })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('Failed to update prompt');
+        }
+        onSelectPrompt(newPromptName, selectedPrompt.id, selectedPrompt.type);
+        setNewPromptName(newPromptName);
+      })
+      .catch((error) => {
+        console.error(error);
+      });
   };
 
   return (
     <div className="mt-[59px]">
       <div className="mb-4">
-        <p className="font-bold text-jet">Select Prompt</p>
+        <p className="font-semibold dark:text-bright-gray">Active Prompt</p>
         <Dropdown
           options={prompts}
-          selectedValue={selectedPrompt}
-          onSelect={onSelectPrompt}
+          selectedValue={selectedPrompt.name}
+          onSelect={handleSelectPrompt}
         />
       </div>
-      <div>
+
+      <div className="mb-4">
+        <p className="dark:text-bright-gray">Prompt name </p>{' '}
+        <p className="mb-2 text-xs italic text-eerie-black dark:text-bright-gray">
+          start by editing name
+        </p>
+        <input
+          type="text"
+          value={newPromptName}
+          placeholder="Active Prompt Name"
+          className="w-full rounded-lg border-2 p-2 dark:border-chinese-silver dark:bg-transparent dark:text-white"
+          onChange={(e) => setNewPromptName(e.target.value)}
+        />
+      </div>
+
+      <div className="mb-4">
+        <p className="mb-2 dark:text-bright-gray">Prompt content</p>
+        <textarea
+          className="h-32 w-full rounded-lg  border-2 p-2 dark:border-chinese-silver dark:bg-transparent dark:text-white"
+          value={newPromptContent}
+          onChange={(e) => setNewPromptContent(e.target.value)}
+          placeholder="Active prompt contents"
+        />
+      </div>
+
+      <div className="flex justify-between">
         <button
-          onClick={openAddPromptModal}
-          className="rounded-lg bg-purple-300 px-4 py-2 font-bold text-white transition-all hover:bg-purple-600"
+          className={`rounded-lg bg-green-500 px-4 py-2 font-bold text-white transition-all hover:bg-green-700 ${
+            newPromptName === selectedPrompt.name
+              ? 'cursor-not-allowed opacity-50'
+              : ''
+          }`}
+          onClick={handleAddPrompt}
+          disabled={newPromptName === selectedPrompt.name}
         >
           Add New Prompt
         </button>
-      </div>
-      {isAddPromptModalOpen && (
-        <AddPromptModal
-          newPromptName={newPromptName}
-          onNewPromptNameChange={setNewPromptName}
-          onAddPrompt={() => {
-            onAddPrompt(newPromptName);
-            closeAddPromptModal();
-          }}
-          onClose={closeAddPromptModal}
-        />
-      )}
-      <div className="mt-4">
         <button
+          className={`rounded-lg bg-red-500 px-4 py-2 font-bold text-white transition-all hover:bg-red-700 ${
+            selectedPrompt.type === 'public'
+              ? 'cursor-not-allowed opacity-50'
+              : ''
+          }`}
           onClick={handleDeletePrompt}
-          className="rounded-lg bg-red-300 px-4 py-2 font-bold text-white transition-all hover:bg-red-600 hover:text-zinc-800"
+          disabled={selectedPrompt.type === 'public'}
         >
           Delete Prompt
+        </button>
+        <button
+          className={`rounded-lg bg-blue-500 px-4 py-2 font-bold text-white transition-all hover:bg-blue-700 ${
+            selectedPrompt.type === 'public'
+              ? 'cursor-not-allowed opacity-50'
+              : ''
+          }`}
+          onClick={handleSaveChanges}
+          disabled={selectedPrompt.type === 'public'}
+        >
+          Save Changes
         </button>
       </div>
     </div>
   );
 };
-
-function Dropdown({
-  options,
-  selectedValue,
-  onSelect,
-}: {
-  options: string[];
-  selectedValue: string;
-  onSelect: (value: string) => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <div className="relative mt-2 h-[43.33px] w-[342px]">
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full cursor-pointer items-center rounded-3xl border-2 bg-white p-3"
-      >
-        <span className="flex-1 overflow-hidden text-ellipsis">
-          {selectedValue}
-        </span>
-        <img
-          src={Arrow2}
-          alt="arrow"
-          className={`transform ${
-            isOpen ? 'rotate-180' : 'rotate-0'
-          } h-4 w-4 transition-transform`}
-        />
-      </button>
-      {isOpen && (
-        <div className="absolute left-0 right-0 top-12 z-50 mt-2 bg-white p-2 shadow-lg">
-          {options.map((option, index) => (
-            <div
-              key={index}
-              onClick={() => {
-                onSelect(option);
-                setIsOpen(false);
-              }}
-              className="flex cursor-pointer items-center justify-between border-b-2 py-3 hover:bg-gray-100"
-            >
-              <span className="flex-1 overflow-hidden overflow-ellipsis whitespace-nowrap">
-                {option}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 type AddPromptModalProps = {
   newPromptName: string;
@@ -347,24 +444,24 @@ const AddPromptModal: React.FC<AddPromptModalProps> = ({
 }) => {
   return (
     <div className="fixed top-0 left-0 flex h-screen w-screen items-center justify-center bg-gray-900 bg-opacity-50">
-      <div className="rounded-lg bg-white p-4">
+      <div className="rounded-3xl bg-white p-4">
         <p className="mb-2 text-2xl font-bold text-jet">Add New Prompt</p>
         <input
           type="text"
           placeholder="Enter Prompt Name"
           value={newPromptName}
           onChange={(e) => onNewPromptNameChange(e.target.value)}
-          className="mb-4 w-full rounded-lg border-2 p-2"
+          className="mb-4 w-full rounded-3xl border-2 p-2 dark:border-chinese-silver"
         />
         <button
           onClick={onAddPrompt}
-          className="rounded-lg bg-purple-300 px-4 py-2 font-bold text-white transition-all hover:bg-purple-600"
+          className="rounded-3xl bg-purple-300 px-4 py-2 font-bold text-white transition-all hover:bg-purple-600"
         >
           Save
         </button>
         <button
           onClick={onClose}
-          className="mt-4 rounded-lg px-4 py-2 font-bold text-red-500"
+          className="mt-4 rounded-3xl px-4 py-2 font-bold text-red-500"
         >
           Cancel
         </button>
@@ -374,62 +471,69 @@ const AddPromptModal: React.FC<AddPromptModalProps> = ({
 };
 
 type DocumentsProps = {
-  documents: Document[];
-  isAddDocumentModalOpen: boolean;
-  newDocument: Document;
-  handleDeleteDocument: (index: number) => void;
-  toggleAddDocumentModal: () => void;
+  documents: Doc[] | null;
+  handleDeleteDocument: (index: number, document: Doc) => void;
 };
 
 const Documents: React.FC<DocumentsProps> = ({
   documents,
-  isAddDocumentModalOpen,
-  newDocument,
   handleDeleteDocument,
-  toggleAddDocumentModal,
 }) => {
   return (
     <div className="mt-8">
       <div className="flex flex-col">
         {/* <h2 className="text-xl font-semibold">Documents</h2> */}
 
-        <div className="mt-[27px] overflow-x-auto">
-          <table className="block w-full table-auto content-center justify-center">
+        <div className="mt-[27px] w-max overflow-x-auto rounded-xl border dark:border-chinese-silver">
+          <table className="block w-full table-auto content-center justify-center text-center dark:text-bright-gray">
             <thead>
               <tr>
-                <th className="border px-4 py-2">Document Name</th>
-                <th className="border px-4 py-2">Vector Date</th>
-                <th className="border px-4 py-2">Vector Location</th>
-                <th className="border px-4 py-2">Actions</th>
+                <th className="border-r p-4 md:w-[244px]">Document Name</th>
+                <th className="w-[244px] border-r px-4 py-2">Vector Date</th>
+                <th className="w-[244px] border-r px-4 py-2">Type</th>
+                <th className="px-4 py-2"></th>
               </tr>
             </thead>
             <tbody>
-              {documents.map((document, index) => (
-                <tr key={index}>
-                  <td className="border px-4 py-2">{document.name}</td>
-                  <td className="border px-4 py-2">{document.vectorDate}</td>
-                  <td className="border px-4 py-2">
-                    {document.vectorLocation}
-                  </td>
-                  <td className="border px-4 py-2">
-                    <button
-                      className="rounded-lg bg-red-600 px-2 py-1 font-bold text-white hover:bg-red-800"
-                      onClick={() => handleDeleteDocument(index)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {documents &&
+                documents.map((document, index) => (
+                  <tr key={index}>
+                    <td className="border-r border-t px-4 py-2">
+                      {document.name}
+                    </td>
+                    <td className="border-r border-t px-4 py-2">
+                      {document.date}
+                    </td>
+                    <td className="border-r border-t px-4 py-2">
+                      {document.location === 'remote'
+                        ? 'Pre-loaded'
+                        : 'Private'}
+                    </td>
+                    <td className="border-t px-4 py-2">
+                      {document.location !== 'remote' && (
+                        <img
+                          src={Trash}
+                          alt="Delete"
+                          className="h-4 w-4 cursor-pointer hover:opacity-50"
+                          id={`img-${index}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteDocument(index, document);
+                          }}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
-        <button
+        {/* <button
           onClick={toggleAddDocumentModal}
           className="mt-10 w-32 rounded-lg bg-purple-300 px-4 py-2 font-bold text-white transition-all hover:bg-purple-600"
         >
           Add New
-        </button>
+        </button> */}
       </div>
 
       {/* {isAddDocumentModalOpen && (

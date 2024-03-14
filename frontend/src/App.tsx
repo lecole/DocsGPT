@@ -5,7 +5,7 @@ import About from './About';
 import PageNotFound from './PageNotFound';
 import { inject } from '@vercel/analytics';
 import { useMediaQuery } from './hooks';
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import Setting from './Setting';
 
 inject();
@@ -13,9 +13,8 @@ inject();
 export default function App() {
   const { isMobile } = useMediaQuery();
   const [navOpen, setNavOpen] = useState(!isMobile);
-
   return (
-    <div className="min-h-full min-w-full">
+    <div className="min-h-full min-w-full dark:bg-raisin-black">
       <Navigation navOpen={navOpen} setNavOpen={setNavOpen} />
       <div
         className={`transition-all duration-200 ${

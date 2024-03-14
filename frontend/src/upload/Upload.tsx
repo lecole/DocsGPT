@@ -5,6 +5,7 @@ import { useDispatch } from 'react-redux';
 import { ActiveState } from '../models/misc';
 import { getDocs } from '../preferences/preferenceApi';
 import { setSourceDocs } from '../preferences/preferenceSlice';
+import Dropdown from '../components/Dropdown';
 
 export default function Upload({
   modalState,
@@ -14,6 +15,18 @@ export default function Upload({
   setModalState: (state: ActiveState) => void;
 }) {
   const [docName, setDocName] = useState('');
+  const [urlName, setUrlName] = useState('');
+  const [url, setUrl] = useState('');
+  const urlOptions: { label: string; value: string }[] = [
+    { label: 'Crawler', value: 'crawler' },
+    // { label: 'Sitemap', value: 'sitemap' },
+    { label: 'Link', value: 'url' },
+  ];
+  const [urlType, setUrlType] = useState<{ label: string; value: string }>({
+    label: 'Link',
+    value: 'url',
+  });
+  const [activeTab, setActiveTab] = useState<string>('file');
   const [files, setfiles] = useState<File[]>([]);
   const [progress, setProgress] = useState<{
     type: 'UPLOAD' | 'TRAINIING';
@@ -149,6 +162,29 @@ export default function Upload({
     xhr.send(formData);
   };
 
+  const uploadRemote = () => {
+    console.log('here');
+    const formData = new FormData();
+    formData.append('name', urlName);
+    formData.append('user', 'local');
+    if (urlType !== null) {
+      formData.append('source', urlType?.value);
+    }
+    formData.append('data', url);
+    const apiHost = import.meta.env.VITE_API_HOST;
+    const xhr = new XMLHttpRequest();
+    xhr.upload.addEventListener('progress', (event) => {
+      const progress = +((event.loaded / event.total) * 100).toFixed(2);
+      setProgress({ type: 'UPLOAD', percentage: progress });
+    });
+    xhr.onload = () => {
+      const { task_id } = JSON.parse(xhr.responseText);
+      setProgress({ type: 'TRAINIING', percentage: 0, taskId: task_id });
+    };
+    xhr.open('POST', `${apiHost + '/api/remote'}`);
+    xhr.send(formData);
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     multiple: false,
@@ -166,7 +202,6 @@ export default function Upload({
         ['.docx'],
     },
   });
-
   let view;
   if (progress?.type === 'UPLOAD') {
     view = <UploadProgress></UploadProgress>;
@@ -175,41 +210,115 @@ export default function Upload({
   } else {
     view = (
       <>
-        <p className="text-xl text-jet">Upload New Documentation</p>
-        <p className="mb-3 text-xs text-gray-4000">
-          Please upload .pdf, .txt, .rst, .docx, .md, .zip limited to 25mb
+        <p className="text-xl text-jet dark:text-bright-gray">
+          Upload New Documentation
         </p>
-        <input
-          type="text"
-          className="h-10 w-[60%] rounded-md border-2 border-gray-5000 px-3 outline-none"
-          value={docName}
-          onChange={(e) => setDocName(e.target.value)}
-        ></input>
-        <div className="relative bottom-12 left-2 mt-[-18.39px]">
-          <span className="bg-white px-2 text-xs text-gray-4000">Name</span>
+        <div>
+          <button
+            onClick={() => setActiveTab('file')}
+            className={`${
+              activeTab === 'file'
+                ? 'bg-soap text-purple-30 dark:bg-independence dark:text-purple-400'
+                : 'text-sonic-silver  hover:text-purple-30'
+            } mr-4 rounded-full px-[20px] py-[5px] text-sm font-semibold`}
+          >
+            From File
+          </button>
+          <button
+            onClick={() => setActiveTab('remote')}
+            className={`${
+              activeTab === 'remote'
+                ? 'bg-soap text-purple-30 dark:bg-independence dark:text-purple-400'
+                : 'text-sonic-silver  hover:text-purple-30'
+            } mr-4 rounded-full px-[20px] py-[5px] text-sm font-semibold`}
+          >
+            Remote
+          </button>
         </div>
-        <div {...getRootProps()}>
-          <span className="rounded-3xl border border-purple-30 px-4 py-2 font-medium text-purple-30 hover:cursor-pointer">
-            <input type="button" {...getInputProps()} />
-            Choose Files
-          </span>
-        </div>
-        <div className="mt-9">
-          <p className="mb-5 font-medium text-eerie-black">Uploaded Files</p>
-          {files.map((file) => (
-            <p key={file.name} className="text-gray-6000">
-              {file.name}
+        {activeTab === 'file' && (
+          <>
+            <input
+              type="text"
+              className="h-10 w-full rounded-full border-2 border-gray-5000 px-3 outline-none dark:bg-transparent dark:text-silver"
+              value={docName}
+              onChange={(e) => setDocName(e.target.value)}
+            ></input>
+            <div className="relative bottom-12 left-2 mt-[-18.39px]">
+              <span className="bg-white px-2 text-xs text-gray-4000 dark:bg-outer-space dark:text-silver">
+                Name
+              </span>
+            </div>
+            <div {...getRootProps()}>
+              <span className="rounded-3xl border border-purple-30 px-4 py-2 font-medium text-purple-30 hover:cursor-pointer dark:bg-purple-taupe dark:text-silver">
+                <input type="button" {...getInputProps()} />
+                Choose Files
+              </span>
+            </div>
+            <p className="mb-0 text-xs italic text-gray-4000">
+              Please upload .pdf, .txt, .rst, .docx, .md, .zip limited to 25mb
             </p>
-          ))}
-          {files.length === 0 && <p className="text-gray-6000">None</p>}
-        </div>
+            <div className="mt-0">
+              <p className="mb-[14px] font-medium text-eerie-black dark:text-light-gray">
+                Uploaded Files
+              </p>
+              {files.map((file) => (
+                <p key={file.name} className="text-gray-6000">
+                  {file.name}
+                </p>
+              ))}
+              {files.length === 0 && (
+                <p className="text-gray-6000 dark:text-light-gray">None</p>
+              )}
+            </div>
+          </>
+        )}
+        {activeTab === 'remote' && (
+          <>
+            <Dropdown
+              options={urlOptions}
+              selectedValue={urlType}
+              onSelect={(value: { label: string; value: string }) =>
+                setUrlType(value)
+              }
+            />
+            <input
+              placeholder="Enter name"
+              type="text"
+              className="h-10 w-full rounded-full border-2 border-silver px-3 outline-none dark:bg-transparent dark:text-silver"
+              value={urlName}
+              onChange={(e) => setUrlName(e.target.value)}
+            ></input>
+            <div className="relative bottom-12 left-2 mt-[-18.39px]">
+              <span className="bg-white px-2 text-xs text-silver dark:bg-outer-space dark:text-silver">
+                Name
+              </span>
+            </div>
+            <input
+              placeholder="URL Link"
+              type="text"
+              className="h-10 w-full rounded-full border-2 border-silver px-3 outline-none dark:bg-transparent dark:text-silver"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            ></input>
+            <div className="relative bottom-12 left-2 mt-[-18.39px]">
+              <span className="bg-white px-2 text-xs text-silver dark:bg-outer-space dark:text-silver">
+                Link
+              </span>
+            </div>
+          </>
+        )}
         <div className="flex flex-row-reverse">
           <button
-            onClick={uploadFile}
-            className={`ml-6 rounded-3xl bg-purple-30 text-white ${
-              files.length > 0 ? '' : 'bg-opacity-75 text-opacity-80'
+            onClick={activeTab === 'file' ? uploadFile : uploadRemote}
+            className={`ml-6 cursor-pointer rounded-3xl bg-purple-30 text-white ${
+              files.length > 0 && docName.trim().length > 0
+                ? ''
+                : 'bg-opacity-75 text-opacity-80'
             } py-2 px-6`}
-            disabled={files.length === 0} // Disable the button if no file is selected
+            disabled={
+              (files.length === 0 || docName.trim().length === 0) &&
+              activeTab === 'file'
+            } // Disable the button if no file is selected or docName is empty
           >
             Train
           </button>
@@ -219,7 +328,7 @@ export default function Upload({
               setfiles([]);
               setModalState('INACTIVE');
             }}
-            className="font-medium"
+            className="cursor-pointer font-medium dark:text-light-gray"
           >
             Cancel
           </button>
@@ -234,7 +343,7 @@ export default function Upload({
         modalState === 'ACTIVE' ? 'visible' : 'hidden'
       } absolute z-30  h-screen w-screen  bg-gray-alpha`}
     >
-      <article className="mx-auto mt-24 flex w-[90vw] max-w-lg  flex-col gap-4 rounded-lg bg-white p-6 shadow-lg">
+      <article className="mx-auto mt-24 flex w-[90vw] max-w-lg  flex-col gap-4 rounded-lg bg-white p-6 shadow-lg dark:bg-outer-space">
         {view}
       </article>
     </article>

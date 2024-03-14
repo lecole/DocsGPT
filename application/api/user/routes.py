@@ -1,13 +1,11 @@
 import os
 from flask import Blueprint, request, jsonify
 import requests
-import json
 from pymongo import MongoClient
 from bson.objectid import ObjectId
 from werkzeug.utils import secure_filename
-import http.client
 
-from application.api.user.tasks import ingest
+from application.api.user.tasks import ingest, ingest_remote
 
 from application.core.settings import settings
 from application.vectorstore.vector_creator import VectorCreator
@@ -16,6 +14,8 @@ mongo = MongoClient(settings.MONGO_URI)
 db = mongo["docsgpt"]
 conversations_collection = db["conversations"]
 vectors_collection = db["vectors"]
+prompts_collection = db["prompts"]
+feedback_collection = db["feedback"]
 user = Blueprint('user', __name__)
 
 current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -36,7 +36,7 @@ def delete_conversation():
 @user.route("/api/get_conversations", methods=["get"])
 def get_conversations():
     # provides a list of conversations
-    conversations = conversations_collection.find().sort("date", -1)
+    conversations = conversations_collection.find().sort("date", -1).limit(30)
     list_conversations = []
     for conversation in conversations:
         list_conversations.append({"id": str(conversation["_id"]), "name": conversation["name"]})
@@ -70,19 +70,15 @@ def api_feedback():
     answer = data["answer"]
     feedback = data["feedback"]
 
-    print("-" * 5)
-    print("Question: " + question)
-    print("Answer: " + answer)
-    print("Feedback: " + feedback)
-    print("-" * 5)
-    response = requests.post(
-        url="https://86x89umx77.execute-api.eu-west-2.amazonaws.com/docsgpt-feedback",
-        headers={
-            "Content-Type": "application/json; charset=utf-8",
-        },
-        data=json.dumps({"answer": answer, "question": question, "feedback": feedback}),
+
+    feedback_collection.insert_one(
+        {
+            "question": question,
+            "answer": answer,
+            "feedback": feedback,
+        }
     )
-    return {"status": http.client.responses.get(response.status_code, "ok")}
+    return {"status": "ok"}
 
 @user.route("/api/delete_by_ids", methods=["get"])
 def delete_by_ids():
@@ -161,6 +157,32 @@ def upload_file():
         return {"status": "ok", "task_id": task_id}
     else:
         return {"status": "error"}
+    
+@user.route("/api/remote", methods=["POST"])
+def upload_remote():
+    """Upload a remote source to get vectorized and indexed."""
+    if "user" not in request.form:
+        return {"status": "no user"}
+    user = secure_filename(request.form["user"])
+    if "source" not in request.form:
+        return {"status": "no source"}
+    source = secure_filename(request.form["source"])
+    if "name" not in request.form:
+        return {"status": "no name"}
+    job_name = secure_filename(request.form["name"])
+    # check if the post request has the file part
+    if "data" not in request.form:
+        print("No data")
+        return {"status": "no data"}
+    source_data = request.form["data"]
+
+    if source_data:
+        task = ingest_remote.delay(source_data=source_data, job_name=job_name, user=user, loader=source)
+        # task id
+        task_id = task.id
+        return {"status": "ok", "task_id": task_id}
+    else:
+        return {"status": "error"}
 
 @user.route("/api/task_status", methods=["GET"])
 def task_status():
@@ -188,7 +210,7 @@ def combined_json():
             "date": "default",
             "docLink": "default",
             "model": settings.EMBEDDINGS_NAME,
-            "location": "local",
+            "location": "remote",
         }
     ]
     # structure: name, language, version, description, fullName, date, docLink
@@ -244,6 +266,80 @@ def check_docs():
                 f.write(r.content)
 
         return {"status": "loaded"}
+
+@user.route("/api/create_prompt", methods=["POST"])
+def create_prompt():
+    data = request.get_json()
+    content = data["content"]
+    name = data["name"]
+    if name == "":
+        return {"status": "error"}
+    user = "local"
+    resp = prompts_collection.insert_one(
+        {
+            "name": name,
+            "content": content,
+            "user": user,
+        }
+    )
+    new_id = str(resp.inserted_id)
+    return {"id": new_id}
+
+@user.route("/api/get_prompts", methods=["GET"])
+def get_prompts():
+    user = "local"
+    prompts = prompts_collection.find({"user": user})
+    list_prompts = []
+    list_prompts.append({"id": "default", "name": "default", "type": "public"})
+    list_prompts.append({"id": "creative", "name": "creative", "type": "public"})
+    list_prompts.append({"id": "strict", "name": "strict", "type": "public"})
+    for prompt in prompts:
+        list_prompts.append({"id": str(prompt["_id"]), "name": prompt["name"], "type": "private"})
+
+    return jsonify(list_prompts)
+
+@user.route("/api/get_single_prompt", methods=["GET"])
+def get_single_prompt():
+    prompt_id = request.args.get("id")
+    if prompt_id == 'default':
+        with open(os.path.join(current_dir, "prompts", "chat_combine_default.txt"), "r") as f:
+            chat_combine_template = f.read()
+        return jsonify({"content": chat_combine_template})
+    elif prompt_id == 'creative':
+        with open(os.path.join(current_dir, "prompts", "chat_combine_creative.txt"), "r") as f:
+            chat_reduce_creative = f.read()
+        return jsonify({"content": chat_reduce_creative})
+    elif prompt_id == 'strict':
+        with open(os.path.join(current_dir, "prompts", "chat_combine_strict.txt"), "r") as f:
+            chat_reduce_strict = f.read()   
+        return jsonify({"content": chat_reduce_strict})
+
+
+    prompt = prompts_collection.find_one({"_id": ObjectId(prompt_id)})
+    return jsonify({"content": prompt["content"]})
+
+@user.route("/api/delete_prompt", methods=["POST"])
+def delete_prompt():
+    data = request.get_json()
+    id = data["id"]
+    prompts_collection.delete_one(
+        {
+            "_id": ObjectId(id),
+        }
+    )
+    return {"status": "ok"}
+
+@user.route("/api/update_prompt", methods=["POST"])
+def update_prompt_name():
+    data = request.get_json()
+    id = data["id"]
+    name = data["name"]
+    content = data["content"]
+    # check if name is null
+    if name == "":
+        return {"status": "error"}
+    prompts_collection.update_one({"_id": ObjectId(id)},{"$set":{"name":name, "content": content}})
+    return {"status": "ok"}
 
 
 

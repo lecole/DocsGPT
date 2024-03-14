@@ -1,0 +1,10 @@
+import { DocsGPTWidget } from "docsgpt";
+
+export default function MyApp({ Component, pageProps }) {
+  return (
+    <>
+      <Component {...pageProps} />
+        <DocsGPTWidget selectDocs="local/docsgpt-sep.zip/"/>
+    </>
+  )
+}
